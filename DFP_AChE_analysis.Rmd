@@ -1,0 +1,293 @@
+---
+title: "DFP AChE analysis"
+output: html_document
+---
+load packages
+```{r}
+library(tidyverse)
+library(plotrix)
+library(emmeans)
+library(purrr)
+library(broom)
+library(forcats)
+library(ggplot2)
+
+library(ggpubr)
+library(rstatix)
+library(tibble)
+library(ggpubr)
+library(DescTools)
+
+```
+
+load and tidy data
+```{r}
+excel.names = c("Plate", "Sample", "Value")
+
+dfp_data <- read.csv("dfp_finaldata.csv",
+                     skip = 1,
+                     col.names = excel.names)
+
+dfp_data <- dfp_data %>% 
+  mutate(Plate = as.factor(Plate), 
+         Sample = as.factor(Sample)) %>% 
+  filter(Plate != is.na(Plate)) #weird empty space at bottom of this dataset, get rid of it
+View(dfp_data)
+
+#Subset just Controls to run stats on controls only
+
+dfp_dataC <- dfp_data %>% 
+  filter(Sample %in% c("c1.1", "c1.2", "c1.3", "c1.4", "c7.1", "c7.2", "c7.3", "c7.4"))
+
+dfp_dataC
+
+```
+
+Statistics to compare all control samples to each other
+```{r}
+#SHAPIRO- TEST FOR NORMAL DISTRIBUTION
+shapiroC <- shapiro.test(dfp_dataC$Value)
+shapiroC
+#not normally distributed for this dataset
+
+#LEVENES- TEST FOR HOMOGENEITY OF VARIANCE
+leveneC <- dfp_dataC %>%
+  levene_test(Value ~ Sample)
+leveneC
+#Variances are equal for this dataset
+
+#KRUSKALL- non parametric ANOVA
+kruskallC <- dfp_dataC %>% 
+  kruskal_test(Value ~ Sample)
+kruskallC
+
+#Dunn's test of  multiple comparison (compare all to each other, NOT trt vs. ctrl)
+DunnC <- DunnTest(dfp_dataC$Value, dfp_dataC$Sample)
+DunnC
+
+```
+
+Graph controls only
+```{r}
+control_data <- dfp_dataC %>% 
+  ggplot(aes(x=Sample, y=Value)) +
+  geom_boxplot() +
+  xlab(label = "Plate position") +
+  ylab(label = "AChE Specific Activity\n (µmole TNB/min/mg protein)") +
+  scale_x_discrete(labels=c("c1.1" = "AB1", "c1.2" = "CD1", "c1.3" = "EF1", "c1.4" = "GH1", 
+                            "c7.1" = "AB7", "c7.2" = "CD7", "c7.3" = "EF7", "c7.4" = "GH7"))
+                          
+control_data
+ggsave("control_data.pdf", plot=control_data, width = 6, height = 4, units = "in")
+
+```
+
+Edit dataset to rename and re-order some things
+```{r}
+dfp_data2 <- dfp_data %>% 
+  mutate(Sample = as.character(Sample)) %>% 
+  mutate(Group = str_replace(Sample, pattern = "c", replacement = "C_")) %>% 
+  separate(Group, into = c("Group", "Temp"), sep = "_") %>% 
+  select(-Temp) %>% 
+  mutate(Group = fct_recode(Group, 
+                             "A1" = "1.1", "B1" = "1.2", "C1" = "1.3", "D1" = "1.4", 
+                            "A2" = "2.1", "B2" = "2.2", "C2" = "2.3", "D2" = "2.4", 
+                            "A3" = "3.1", "B3" = "3.2", "C3" = "3.3", "D3" = "3.4",
+                            "A4" = "4.1", "B4" = "4.2", "C4" = "4.3", "D4" = "4.4",
+                            "A5" = "5.1", "B5" = "5.2", "C5" = "5.3", "D5" = "5.4",
+                            "A6" = "6.1", "B6" = "6.2", "C6" = "6.3", "D6" = "6.4",
+                            "A7" = "7.1", "B7" = "7.2", "C7" = "7.3", "D7" = "7.4",
+                            "A8" = "8.1", "B8" = "8.2", "C8" = "8.3", "D8" = "8.4",
+                            "A9" = "9.1", "B9" = "9.2", "C9" = "9.3", "D9" = "9.4",
+                            "A10" = "10.1", "B10" = "10.2", "C10" = "10.3", "D10" = "10.4",
+                            "A11" = "11.1", "B11" = "11.2", "C11" = "11.3", "D11" = "11.4",
+                            "A12" = "12.1", "B12" = "12.2", "C12" = "12.3", "D12" = "12.4")) %>% 
+   mutate(Group = fct_relevel(Group, "C", "A1", "B1", "C1", "D1", "A2", "B2", "C2", "D2", "A3", "B3", "C3", "D3", "A4", "B4", "C4", "D4", "A5", "B5", "C5", "D5", "A6", "B6", "C6", "D6", "A7", "B7", "C7", "D7", "A8", "B8", "C8", "D8", "A9", "B9","C9", "D9", "A10", "B10", "C10", "D10", 
+                              "A11", "B11", "C11", "D11", "A12", "B12", "C12", "D12"), #Use this Group for plotting heatmap
+          Group2 = fct_recode(Group,
+                              "Control" = "C", "AB1" = "A1", "CD1" = "B1", "EF1" = "C1", "GH1" = "D1", 
+                              "AB2" = "A2", "CD2" = "B2", "EF2" = "C2", "GH2" = "D2", 
+                              "AB3" = "A3", "CD3" = "B3", "EF3" = "C3", "GH3" = "D3",
+                              "AB4" = "A4", "CD4" = "B4", "EF4" = "C4", "GH4" = "D4",
+                              "AB4" = "A4", "CD4" = "B4", "EF4" = "C4", "GH4" = "D4",
+                              "AB5" = "A5", "CD5" = "B5", "EF5" = "C5", "GH5" = "D5",
+                              "AB6" = "A6", "CD6" = "B6", "EF6" = "C6", "GH6" = "D6",
+                              "AB7" = "A7", "CD7" = "B7", "EF7" = "C7", "GH7" = "D7",
+                              "AB8" = "A8", "CD8" = "B8", "EF8" = "C8", "GH8" = "D8", 
+                              "AB9" = "A9", "CD9" = "B9", "EF9" = "C9", "GH9" = "D9", 
+                              "AB10" = "A10", "CD10" = "B10", "EF10" = "C10", "GH10" = "D10",
+                              "AB11" = "A11", "CD11" = "B11", "EF11" = "C11", "GH11" = "D11", 
+                              "AB12" = "A12", "CD12" = "B12", "EF12" = "C12", "GH12" = "D12")) %>% #Use Group2 for graphing boxplot
+  mutate(Group2 = fct_relevel(Group2,"Control","AB1", "CD1", "EF1", "GH1",
+"AB2", "CD2", "EF2", "GH2", 
+"AB3", "CD3", "EF3", "GH3", 
+"AB4", "CD4", "EF4", "GH4", 
+"AB5", "CD5", "EF5", "GH5",
+"AB6", "CD6", "EF6", "GH6",
+"AB7", "CD7", "EF7", "GH7", 
+"AB8", "CD8", "EF8", "GH8", 
+"AB9", "CD9", "EF9", "GH9", 
+"AB10", "CD10", "EF10", "GH10", 
+"AB11", "CD11", "EF11", "GH11", 
+"AB12", "CD12", "EF12", "GH12"))
+                      
+View(dfp_data2)
+
+```
+
+Statistics- compare experimental samples to control samples
+```{r}
+#SHAPIRO- TEST FOR NORMAL DISTRIBUTION
+shapiro <- shapiro.test(dfp_data2$Value)
+shapiro
+#this dataset not normally distributed
+
+#LEVENES- TEST FOR HOMOGENEITY OF VARIANCE
+levene <- dfp_data2 %>%
+  levene_test(Value ~ Group)
+levene
+#Variances not equal
+
+#KRUSKALL
+kruskall <- dfp_data2 %>% 
+  kruskal_test(Value ~ Group)
+
+kruskall
+
+#DUNNET- TREAT VS CONTROL
+dunnet <- DunnettTest(dfp_data2$Value, dfp_data2$Group)
+dunnet
+
+pvals <- dunnet$C[,"pval"]  #extracts just the pvalues from the test for graphing
+pvals
+
+pvalues <- data.frame("Name" = names(pvals), #make into a table so you can merge with datasets for graphing
+                      "Pvals" = pvals) %>% as.tibble() %>% 
+     mutate(Significant = case_when(Pvals > 0.05 ~ "ns",
+                                   Pvals <= 0.01 ~"**",
+                                   Pvals <= 0.05 ~"*")) %>% 
+  separate(Name, into = c("Sample", "C"), sep="-") %>% 
+  select(-C)
+
+
+pvalues
+
+
+```
+
+
+Merge datasets with stats for graphing
+```{r}
+#DATASET FOR HEATMAP
+heatmap_data <- dfp_data2 %>% 
+  select(-Plate, -Sample) %>% 
+  group_by(Group) %>% 
+  summarise(Mean = mean(Value)) %>% 
+  spread(key=Group, value = Mean) %>% 
+  ungroup() %>% 
+  gather(key = "Sample", value = "value", -C) %>% 
+  mutate(Difference = value - C) %>% #THis gives the difference between treatment and control values 
+  select(-C) %>% 
+  separate(Sample, into = c("Letter", "Number"),  sep = "(?<=[A-Za-z])(?=[0-9])", remove =F) %>% 
+  mutate(Letter = fct_relevel(Letter, "D", "C", "B", "A")) %>% 
+  mutate(Number = fct_relevel(Number, "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"))
+  
+#MERGE WITH STATS FOR GRAPHING
+heatmap_data_stat <- heatmap_data %>% 
+  full_join(pvalues, by = "Sample") %>% 
+  mutate(Significant = case_when(Significant == "**" ~ "*", 
+                         Significant == "ns" ~ "ns"))
+
+heatmap_data_stat
+
+
+#FOR BOXPLOT
+
+pvalues_boxplot <- pvalues %>% 
+  mutate(Group2 = fct_recode(Sample,"Control" = "C", "AB1" = "A1", "CD1" = "B1", "EF1" = "C1", "GH1" = "D1", 
+                              "AB2" = "A2", "CD2" = "B2", "EF2" = "C2", "GH2" = "D2", 
+                              "AB3" = "A3", "CD3" = "B3", "EF3" = "C3", "GH3" = "D3",
+                              "AB4" = "A4", "CD4" = "B4", "EF4" = "C4", "GH4" = "D4",
+                              "AB4" = "A4", "CD4" = "B4", "EF4" = "C4", "GH4" = "D4",
+                              "AB5" = "A5", "CD5" = "B5", "EF5" = "C5", "GH5" = "D5",
+                              "AB6" = "A6", "CD6" = "B6", "EF6" = "C6", "GH6" = "D6",
+                              "AB7" = "A7", "CD7" = "B7", "EF7" = "C7", "GH7" = "D7",
+                              "AB8" = "A8", "CD8" = "B8", "EF8" = "C8", "GH8" = "D8", 
+                              "AB9" = "A9", "CD9" = "B9", "EF9" = "C9", "GH9" = "D9", 
+                              "AB10" = "A10", "CD10" = "B10", "EF10" = "C10", "GH10" = "D10",
+                              "AB11" = "A11", "CD11" = "B11", "EF11" = "C11", "GH11" = "D11", 
+                              "AB12" = "A12", "CD12" = "B12", "EF12" = "C12", "GH12" = "D12"))
+pvalues_boxplot
+
+
+#Add column of max value for adding stats to graph- this is just so you can add the astericks above the max values when plotting so they can be clearly visible
+
+Value_max <- dfp_data2 %>% 
+  select(-Plate, -Sample, -Group) %>% 
+  group_by(Group2) %>% 
+  summarise(ValueMax = max(Value))
+Value_max
+
+#merge with boxplot pvalues 
+
+boxplot_stat <- pvalues_boxplot %>% 
+  full_join(Value_max, by="Group2")
+
+boxplot_stat
+
+```
+
+
+HEATMAP plot
+```{r}
+library(ggnewscale)
+
+plot <- heatmap_data_stat %>% 
+  ggplot(aes(x=Number, y = Letter)) +
+  geom_point(aes(fill=Difference, color = Significant), shape=21, size=12.5, stroke=0.75) +
+  scale_fill_viridis_c(option = "viridis", name="Difference in AChE Activity\n(Treatment - Control plates)") +
+  scale_color_manual(values=c("white", "black"), name="Significance", labels=c("p < 0.05", "not significant")) +
+  theme_dark() +
+  scale_x_discrete(labels=c("1" = "DMSO", "2" = ".01", "3" = ".03", "4" = "0.1", "5" = "0.3", "6" = "1",
+                          "7" = "DMSO", "8" = ".01", "9" = ".03", "10" = "0.1", "11" = "0.3", "12" = "1"), position = "bottom") +
+  scale_y_discrete(labels=c("A" = "A&B", "B" = "C&D", "C" = "E&F", "D" = "G&H")) +
+  xlab(label = "Treatment (mM DFP)") +
+  ylab(label = "Plate position")
+
+plot
+
+ggsave("heatplot.pdf", plot = plot, width=8, height = 4, units = "in", limitsize = T)
+```
+
+BOXPLOT
+```{r}
+library(RColorBrewer)
+
+boxplot <- dfp_data2 %>% 
+  ggplot(aes(x=Group2, y=Value, color = Group2)) +
+  geom_boxplot() +
+  theme(legend.position = "none", 
+        axis.text.x = element_text(vjust= 0.6, angle = 45)) +
+  scale_color_manual(values = c("black",
+                                brewer.pal(9, "Reds")[c(5,6,7,8)],
+                                brewer.pal(9, "Blues")[c(5,6,7,8)],
+                                brewer.pal(9, "Greens")[c(5,6,7,8)], 
+                                brewer.pal(9, "Purples")[c(5,6,7,8)],
+                                brewer.pal(9, "Oranges")[c(3,4,5,6)], 
+                                brewer.pal(9, "RdPu")[c(3,4,5,6)],
+                                brewer.pal(9, "Reds")[c(5,6,7,8)],
+                                brewer.pal(9, "Blues")[c(5,6,7,8)],
+                                brewer.pal(9, "Greens")[c(5,6,7,8)], 
+                                brewer.pal(9, "Purples")[c(5,6,7,8)],
+                                brewer.pal(9, "Oranges")[c(3,4,5,6)], 
+                                brewer.pal(9, "RdPu")[c(3,4,5,6)])) +
+  geom_text(data = filter(boxplot_stat, Significant == "**"), aes(x=Group2, y=ValueMax + 22), label= "*", color = "black", fontface="bold") +
+  xlab(label = "Position on plate") +
+  ylab(label = "AChE Specific Activity\n (µmole TNB/min/mg protein)")
+
+boxplot
+
+ggsave("boxplot.pdf", plot=boxplot, width=8.2, height = 4, units="in")
+
+```
+
